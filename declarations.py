@@ -10,15 +10,47 @@ REGISTER_DICT = {0: "not registered",
                  4: "unknown",
                  5: "registered with roaming"}
 
-LOG_SERIAL_PORT = False
-
+LOG_SERIAL_PORT = False #True
+LOG_REST = True
 
 # SERVER
 PHONE_UPDATE = "/api/phone_update"
+PHONES = "/api/phones"
+PHONE_CREATE = "/api/phone_create"
+PHONES_SAMPLE_REQ =    {
+        "operator": "vodane",
+        "signal_q": 12,
+        "reg_status": "Denied",
+        "cipher_ind": True,
+        "kc": "example",
+        "kc_gprs": "example",
+        "cipher_key": "example",
+        "integrity_key": "example",
+        "tmsi": "example",
+        "tmsi_time": "exampl",
+        "lai": "examp",
+        "ptmsi": "exa",
+        "ptmsi_sign": "exa",
+        "rai": "examp",
+        "threshold": 12
+    }
+
+
 HEADERS = {"Content-Type": "application/json"}
 USE_REST = True
 
 # CMEE
+
+CRSM_ADDRESSES = { 28423: "imsi",
+                   28589: "cipher_ind",
+                   20256: "kc",
+                   20306: "kc_gprs",
+                   28424: "cipher_key,integrity_key",
+                   28542: "tmsi,tmsi_time,lai",
+                   28531: "ptmsi,ptmsi_sign,rai",
+                   28508: "threshold"
+                   }
+
 
 CMEE_ERRORS = {0: "Phone failure",
                1: "No connection to phone",

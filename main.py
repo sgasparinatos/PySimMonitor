@@ -4,9 +4,7 @@ import signal
 import sys
 import time
 from queue import Queue, Empty
-
 import requests
-
 from declarations import *
 from modem import ModemControlThread
 
@@ -24,11 +22,24 @@ class MainProg:
     def send_changes(self, changes):
         changes["imsi"] = self.imsi
         try:
-            logging.info("Sending changes " + str(changes))
-            requests.patch(self.url + PHONE_UPDATE, json=changes, headers=HEADERS)
+            if LOG_REST:
+                logging.info("Sending changes " + str(changes))
+            req = requests.patch(self.url + PHONE_UPDATE, json=changes, headers=HEADERS)
+            if req.status_code != 200:
+                logging.warning("Request FAILED with " + str(req.status_code))
         except Exception:
             logging.warning("Failed to send changes to server")
-        return
+
+    def send_full_phone(self):
+        try:
+            if LOG_REST:
+                logging.info("Sending full phone")
+            json_data = { 'imsi' : self.imsi }
+            req = requests.post(self.url + PHONE_CREATE, json=json_data, headers=HEADERS)
+            if req.status_code != 200:
+                logging.warning("Request FAILED with " + str(req.status_code))
+        except Exception:
+            logging.warning("Failed to send sample phone")
 
     def run(self):
 
@@ -43,8 +54,9 @@ class MainProg:
                 try:
                     changes = self.changes_queue.get(0)
                     if "imsi" in changes:
-                        self.imsi = changes['IMSI']
+                        self.imsi = changes['imsi']
                         logging.info("IMSI :" + self.imsi)
+                        self.send_full_phone()
                     elif USE_REST:
                         self.send_changes(changes)
 

@@ -4,14 +4,19 @@ import logging
 from threading import Thread
 from declarations import *
 from queue import Queue, Empty
+import struct
+import binascii
 
 
 class ModemValues:
     imsi = None
     operator = None
     signal_quality = None
-    reg_status = None
     cipher_indication = None
+    reg_status = None
+    kc = None
+    kc_gprs = None
+    cipher_key = None
     integrity_key = None
     tmsi = None
     tmsi_time = None
@@ -28,6 +33,7 @@ class ModemControlThread(Thread):
     current_csq = ""
     unsolicited_data_queue = Queue()
     values = ModemValues()
+    crsm_address = 0
 
     def __init__(self, modem_settings, changes_queue):
         Thread.__init__(self)
@@ -75,7 +81,12 @@ class ModemControlThread(Thread):
 
         return data_in
 
-    def command(self, command, wait_response, wait_time, wait_crlf, send_crlf, retry=False):
+    def command(self, command, wait_response, wait_time, wait_crlf, send_crlf, retry=False, crsm_addr=0):
+
+        if crsm_addr != 0:
+            self.crsm_address = crsm_addr
+        else:
+            self.crsm_address = 0
 
         retries = 1
         if retry:
@@ -88,7 +99,7 @@ class ModemControlThread(Thread):
             status, res = self.send_wait_for_response(command, wait_response, wait_time, wait_crlf, send_crlf)
 
             if status is None:
-                if len(res)>0:
+                if len(res) > 0:
                     # to catch cmee errors
                     data_array = res.split("\r\n")
                     for data in data_array:
@@ -164,25 +175,51 @@ class ModemControlThread(Thread):
         # TODO something if needs pin
         time.sleep(0.1)
         self.command("AT#CCID", "OK", 1, True, True)
+        self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423)  # IMSI
 
     def security_commands(self):
-        self.command("AT+CRSM=176,28423,0,0,10", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28589,0,0,3", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28448,0,0,9", "OK", 1, True, True)
-        self.command("AT+CRSM=176,20256,0,0,9", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28498,0,0,9", "OK", 1, True, True)
-        self.command("AT+CRSM=176,20306,0,0,9", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28424,0,0,33", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28542,0,0,11", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28499,0,0,14", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28531,0,0,14", "OK", 1, True, True)
-        self.command("AT+CRSM=176,28531,0,0,14", "OK", 1, True, True)
+        # self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423) # IMSI
+        self.command("AT+CRSM=176,28589,0,0,3", "OK", 1, True, True, crsm_addr=28589)  # CIPHER INDICATOR
+        time.sleep(0.1)
+        # self.command("AT+CRSM=176,28448,0,0,9", "OK", 1, True, True, crsm_addr=28448) # CIPHER KEY Kc (SIM)
+        self.command("AT+CRSM=176,20256,0,0,9", "OK", 1, True, True, crsm_addr=20256)  # CIPHER KEY Kc (USIM)
+        time.sleep(0.1)
+        # self.command("AT+CRSM=176,28498,0,0,9", "OK", 1, True, True, 28498) # CIPHER KEY KcGPRS (SIM)
+        self.command("AT+CRSM=176,20306,0,0,9", "OK", 1, True, True, crsm_addr=20306)  # CIPHER KEY KcGPRS (USIM)
+        time.sleep(0.1)
+        self.command("AT+CRSM=176,28424,0,0,33", "OK", 1, True, True,
+                     crsm_addr=28424)  # CIPHER KEY CK & INTEGRITY KEY IK
+        time.sleep(0.1)
+        self.command("AT+CRSM=176,28542,0,0,11", "OK", 1, True, True, crsm_addr=28542)  # TMSI, TMSI TIME, LAI
+        time.sleep(0.1)
+        # self.command("AT+CRSM=176,28499,0,0,14", "OK", 1, True, True, 28499) # PTMSI, PTMSI,
+        # SIGNATURE, RAI (SIM)
+        self.command("AT+CRSM=176,28531,0,0,14", "OK", 1, True, True,
+                     crsm_addr=28531)  # PTMSI, PTMSI, SIGNATURE, RAI & RAUS (USIM)
+        time.sleep(0.1)
+        self.command("AT+CRSM=176,28508,0,0,3", "OK", 1, True, True, crsm_addr=28508)  # THRESHOLD
+        time.sleep(0.1)
 
     def status_commands(self):
-        self.command("AT+CSQ", "OK", 1, True, True) # signal quality
-        self.command("AT+COPS?", "OK", 1, True, True) # operator
-        self.command("AT+CREG?", "OK", 1, True, True) # registration status
-        self.command("AT+CLIP=1", "OK", 1, True, True) # caller line identity
+        self.command("AT+CSQ", "OK", 1, True, True)  # signal quality
+        self.command("AT+COPS?", "OK", 1, True, True)  # operator
+        self.command("AT+CREG?", "OK", 1, True, True)  # registration status
+        self.command("AT+CLIP=1", "OK", 1, True, True)  # caller line identity
+
+    @staticmethod
+    def reverse_chars(str_in):
+        # CRSM returns bytes in reverse byte format
+        # eg. we get 082920109020148296 for imsi
+        # and it should be 809202010902412869
+
+        # str_out = ""
+        # for i in range(0, len(str_in), 2):
+        #     str_out += str_in[i + 1] + str_in[i]
+        #
+
+        # ONE LINERS FTW
+        str_out = "".join("".join(str_in[i + 1] + str_in[i]) for i in range(0, len(str_in), 2))
+        return str_out
 
     def parse_input(self, data):
         try:
@@ -191,7 +228,7 @@ class ModemControlThread(Thread):
             if "RING" in data:  # incoming CALL
                 pass
 
-            if "+CLIP" in data: # caller id
+            if "+CLIP" in data:  # caller id
                 pass
 
             elif "CDS" in data:  # incoming SMS
@@ -204,7 +241,77 @@ class ModemControlThread(Thread):
                     changes['operator'] = OPERATOR_DICT[operator]
 
             elif "+CRSM" in data:  # restricted sim data
-                pass
+                # value = self.reverse_chars(data.replace("+CRSM:", "").split(",")[2].replace("\"", ""))
+                value = data.replace("+CRSM:", "").split(",")[2].replace("\"", "")
+
+                if self.crsm_address == 28423:  # imsi
+                    imsi = self.reverse_chars(value).replace("809", "")
+                    if self.values.imsi != imsi:
+                        self.values.imsi = imsi
+                        changes['imsi'] = imsi
+
+                elif self.crsm_address == 28589:  # cipher_ind
+                    cipher_ind = True if int(value) == 1 else False
+                    if self.values.cipher_indication != cipher_ind:
+                        self.values.cipher_indication = cipher_ind
+                        changes['cipher_ind'] = cipher_ind
+
+                elif self.crsm_address == 20256:  # kc
+                    if self.values.kc != value:
+                        self.values.kc = value
+                        changes['kc'] = value
+
+                elif self.crsm_address == 20306:  # Kc gprs
+                    if self.values.kc_gprs != value:
+                        self.values.kc_gprs = value
+                        changes['kc_gprs'] = value
+
+                elif self.crsm_address == 28424:  # cipher_key, integrity_key
+                    # check the sizes
+                    cipher_key = value[2:34]
+                    integrity_key = value[34:]
+                    if self.values.cipher_key != cipher_key:
+                        self.values.cipher_key = cipher_key
+                        changes['cipher_key'] = cipher_key
+                    if self.values.integrity_key != integrity_key:
+                        self.values.integrity_key = integrity_key
+                        changes['integrity_key'] = integrity_key
+
+                elif self.crsm_address == 28542:  # tmsi, tmsi_time, lai
+                    tmsi = value[:8]
+                    tmsi_time = int(value[8:10])
+                    lai = value[10:]
+                    if self.values.tmsi != tmsi:
+                        self.values.tmsi = tmsi
+                        changes['tmsi'] = tmsi
+                    if self.values.tmsi_time != tmsi_time:
+                        self.values.tmsi_time = tmsi_time
+                        changes['tmsi_time'] = tmsi_time
+                    if self.values.lai != lai:
+                        self.values.lai = lai
+                        changes['lai'] = lai
+
+                elif self.crsm_address == 28531:  # ptmsi, ptmsi_sign, rai
+                    ptmsi = value[2:10]
+                    ptmsi_sign = value[10:16]
+                    rai = value[16:]
+                    if self.values.ptmsi != ptmsi:
+                        self.values.ptmsi = ptmsi
+                        changes['ptmsi'] = ptmsi
+                    if self.values.ptmsi_signature != ptmsi_sign:
+                        self.values.ptmsi_signature = ptmsi_sign
+                        changes['ptmsi_sign'] = ptmsi_sign
+                    if self.values.rai != rai:
+                        self.values.rai = rai
+                        changes['rai'] = rai
+
+                elif self.crsm_address == 28508:  # threshold
+                    threshold = struct.unpack(">L", binascii.unhexlify("00"+value))[0]
+                    if self.values.threshold != threshold:
+                        self.values.threshold = threshold
+                        changes['threshold'] = threshold
+
+                self.crsm_address = 0
 
             elif "+CREG" in data:  # registration status
                 reg_status = int(data.replace("+CREG:", "").split(",")[1])
@@ -228,9 +335,9 @@ class ModemControlThread(Thread):
             if len(changes) > 0:
                 self.changes_queue.put(changes)
 
-        except Exception:
+        except Exception as ex:
+            logging.error("Exception " + str(ex))
             pass
-
 
     def run(self):
 
