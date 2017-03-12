@@ -1,0 +1,19 @@
+/api/phone_update
+{
+    "imsi": "",
+    "operator": "",
+    "signal_q": null,
+    "reg_status": "",
+    "cipher_ind": false,
+    "kc": "",
+    "kc_gprs": "",
+    "cipher_key": "",
+    "integrity_key": "",
+    "tmsi": "",
+    "tmsi_time": "",
+    "lai": "",
+    "ptmsi": "",
+    "ptmsi_sign": "",
+    "rai": "",
+    "threshold": null
+}
