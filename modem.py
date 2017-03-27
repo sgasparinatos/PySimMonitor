@@ -6,12 +6,13 @@ from declarations import *
 from queue import Queue, Empty
 import struct
 import binascii
+import datetime
 
 
 class ModemValues:
     imsi = None
     operator = None
-    signal_quality = None
+    signal_quality = 0
     cipher_indication = None
     reg_status = None
     kc = None
@@ -34,6 +35,7 @@ class ModemControlThread(Thread):
     unsolicited_data_queue = Queue()
     values = ModemValues()
     crsm_address = 0
+    last_command = ""
 
     def __init__(self, modem_settings, changes_queue):
         Thread.__init__(self)
@@ -82,6 +84,8 @@ class ModemControlThread(Thread):
         return data_in
 
     def command(self, command, wait_response, wait_time, wait_crlf, send_crlf, retry=False, crsm_addr=0):
+
+        self.last_command = command
 
         if crsm_addr != 0:
             self.crsm_address = crsm_addr
@@ -176,6 +180,15 @@ class ModemControlThread(Thread):
         time.sleep(0.1)
         self.command("AT#CCID", "OK", 1, True, True)
         self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423)  # IMSI
+
+
+
+    def me_commands(self):
+        self.command("ATI", "OK", 1, True, True)
+
+
+
+
 
     def security_commands(self):
         # self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423) # IMSI
@@ -321,7 +334,7 @@ class ModemControlThread(Thread):
 
             elif "+CSQ" in data:  # signal quality
                 signal_quality = int(data.replace("+CSQ:", "").split(",")[0])
-                if self.values.signal_quality != signal_quality:
+                if int(self.values.signal_quality) - int(signal_quality) > SIGNAL_QUALITY_THRESHOLD or int(signal_quality) - int(self.values.signal_quality) > SIGNAL_QUALITY_THRESHOLD:
                     self.values.signal_quality = signal_quality
                     changes["signal_q"] = signal_quality
 
@@ -332,16 +345,40 @@ class ModemControlThread(Thread):
                 cmee_code = int(data.replace("+CMEE", "").replace("ERROR").replace(":").strip())
                 changes["cmee"] = CMEE_ERRORS[cmee_code]
 
+
+            elif "Manufacturer" in data:
+                phone_vendor = data.split(":")[1].strip()
+                print("Vendor:"  + phone_vendor)
+                changes['phone_vendor'] = phone_vendor
+
+            elif "Model" in data:
+                phone_model = data.split(":")[1].strip()
+                print("Model:" + phone_model)
+                changes['phone_model'] = phone_model
+
+            elif "IMEI" in data:
+                imei = data.split(":")[1].strip()
+                print("IMEI:" + imei)
+                changes['imei'] = imei
+
+            elif "Revision" in data:
+                firmware_version = data.split(":")[1].strip()
+                print("firmware:" + firmware_version)
+                changes['firmware_version'] = firmware_version
+
             if len(changes) > 0:
+                changes['timestamp'] = str(datetime.datetime.now())
                 self.changes_queue.put(changes)
 
         except Exception as ex:
             logging.error("Exception " + str(ex))
-            pass
+            logging.error("On command : " + self.last_command)
+
 
     def run(self):
 
         self.init_modem()
+        self.me_commands()
         self.read_unsolicited()
 
         while self.work:

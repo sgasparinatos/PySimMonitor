@@ -3,5 +3,4 @@ usb_modeswitch -v 0x05c6 -p 0x1000 -V 0x5c6 -P 0x6000  -M "555342431234567800000
 
 #usb_modeswitch -v 0x05c6 -p 0x1000 -V 0x5c6 -P 0x6000  -M "5553424312345678000000000000061b000000030000000000000000000000"
 
-
 #echo 05c6 6280 > /sys/bus/usb-serial/drivers/generic/new_id

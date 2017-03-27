@@ -12,6 +12,8 @@ REGISTER_DICT = {0: "not registered",
 
 LOG_SERIAL_PORT = False #True
 LOG_REST = True
+SIGNAL_QUALITY_THRESHOLD = 2
+
 
 # SERVER
 PHONE_UPDATE = "/api/phone_update"
