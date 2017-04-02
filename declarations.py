@@ -10,9 +10,13 @@ REGISTER_DICT = {0: "not registered",
                  4: "unknown",
                  5: "registered with roaming"}
 
+USE_WEBSOCKET = False
+
 LOG_SERIAL_PORT = False #True
 LOG_REST = True
 SIGNAL_QUALITY_THRESHOLD = 2
+
+WEBSOCK_PATH = "/livephone/"
 
 
 # SERVER

@@ -7,17 +7,23 @@ from queue import Queue, Empty
 import requests
 from declarations import *
 from modem import ModemControlThread
+from websock import WebSocketThread
 
 
 class MainProg:
     changes_queue = Queue()
+    websock_queue = Queue()
     work = True
 
     def __init__(self, settings):
-        self.modem_thread = ModemControlThread(settings['Modem'], self.changes_queue)
+        self.modem_thread = ModemControlThread(settings['Modem'], self.changes_queue, self.websock_queue)
         self.modem_thread.setName("MC")
-        self.url = settings['Server']['url']
+
+        self.url = "http://" + settings['Server']['url']
+        self.ws_url = "ws://" + settings['Server']['url']
         self.imsi = "imsi1"
+
+
 
     def send_changes(self, changes):
         changes["imsi"] = self.imsi
@@ -57,6 +63,12 @@ class MainProg:
                         self.imsi = changes['imsi']
                         logging.info("IMSI :" + self.imsi)
                         self.send_full_phone()
+
+                        if USE_WEBSOCKET:
+                            self.websock_thread = WebSocketThread(self.ws_url, self.websock_queue, self.imsi)
+                            self.websock_thread.setName("WS")
+                            self.websock_thread.start()
+
                     elif USE_REST:
                         self.send_changes(changes)
 

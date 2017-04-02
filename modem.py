@@ -28,6 +28,9 @@ class ModemValues:
     threshold = None
 
 
+
+
+
 class ModemControlThread(Thread):
     registered = False
     current_operator = ""
@@ -37,7 +40,7 @@ class ModemControlThread(Thread):
     crsm_address = 0
     last_command = ""
 
-    def __init__(self, modem_settings, changes_queue):
+    def __init__(self, modem_settings, changes_queue, websock_queue):
         Thread.__init__(self)
         try:
             self.ser = Serial(port=modem_settings['serialport'],
@@ -51,6 +54,7 @@ class ModemControlThread(Thread):
                               dsrdtr=False)
 
             self.changes_queue = changes_queue
+            self.websock_queue = websock_queue
             self.work = True
         except SerialException as err:
             logging.critical("Problem opening serial port, {0}".format(err))
