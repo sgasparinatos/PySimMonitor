@@ -365,10 +365,11 @@ class ModemControlThread(Thread):
                 print("IMEI:" + imei)
                 changes['imei'] = imei
 
-            elif "Revision" in data:
-                firmware_version = data.split(":")[1].strip()
-                print("firmware:" + firmware_version)
-                changes['firmware_version'] = firmware_version
+            #TODO bigger field in firmware django
+            # elif "Revision" in data:
+            #     firmware_version = data.split(":")[1].strip()
+            #     print("firmware:" + firmware_version)
+            #     changes['firmware_version'] = firmware_version
 
             if len(changes) > 0:
                 changes['timestamp'] = str(datetime.datetime.now())

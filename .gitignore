@@ -1,3 +1,4 @@
 .idea/
 .~lock.cmee.csv#
 venv/
+changes.db

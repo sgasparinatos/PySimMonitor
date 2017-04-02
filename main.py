@@ -8,7 +8,8 @@ import requests
 from declarations import *
 from modem import ModemControlThread
 from websock import WebSocketThread
-
+from dboperations import *
+# import eventlet
 
 class MainProg:
     changes_queue = Queue()
@@ -22,7 +23,10 @@ class MainProg:
         self.url = "http://" + settings['Server']['url']
         self.ws_url = "ws://" + settings['Server']['url']
         self.imsi = "imsi1"
-
+        create_db(settings['Db'])
+        self.dbo = DbOperations(settings['Db'])
+        self.rest_fail_time = 0
+        self.rest_success_time = 0
 
 
     def send_changes(self, changes):
@@ -30,22 +34,42 @@ class MainProg:
         try:
             if LOG_REST:
                 logging.info("Sending changes " + str(changes))
-            req = requests.patch(self.url + PHONE_UPDATE, json=changes, headers=HEADERS)
+
+
+            req = requests.patch(self.url + PHONE_UPDATE, json=changes, headers=HEADERS, timeout=REQUESTS_TIMEOUT)
             if req.status_code != 200:
                 logging.warning("Request FAILED with " + str(req.status_code))
+                self.rest_fail_time = time.time()
+                return False
+            else:
+                self.rest_success_time = time.time()
+                return True
         except Exception:
             logging.warning("Failed to send changes to server")
+            self.rest_fail_time = time.time()
+            return False
 
     def send_full_phone(self):
         try:
             if LOG_REST:
                 logging.info("Sending full phone")
             json_data = { 'imsi' : self.imsi }
-            req = requests.post(self.url + PHONE_CREATE, json=json_data, headers=HEADERS)
+            req = requests.post(self.url + PHONE_CREATE, json=json_data, headers=HEADERS, timeout=REQUESTS_TIMEOUT)
             if req.status_code != 200:
                 logging.warning("Request FAILED with " + str(req.status_code))
+
         except Exception:
             logging.warning("Failed to send sample phone")
+
+
+    def store_changes(self, changes):
+
+        timestamp = changes['timestamp']
+        for key in changes.keys():
+            if key in ('timestamp', 'imsi'):
+                continue
+            self.dbo.new_change(key, str(changes[key]), timestamp)
+
 
     def run(self):
 
@@ -59,6 +83,7 @@ class MainProg:
             while self.work:
                 try:
                     changes = self.changes_queue.get(0)
+
                     if "imsi" in changes:
                         self.imsi = changes['imsi']
                         logging.info("IMSI :" + self.imsi)
@@ -70,10 +95,22 @@ class MainProg:
                             self.websock_thread.start()
 
                     elif USE_REST:
-                        self.send_changes(changes)
+                        if not self.send_changes(changes):
+                            self.store_changes(changes)
 
                 except Empty:
                     pass
+
+                if  time.time() - self.rest_success_time > RETRY_REST_DELAY:
+                    count = self.dbo.has_changes()
+                    for i in range(count):
+                        id, change = self.dbo.get_older_change_rest()
+                        if self.send_changes(change):
+                            self.dbo.delete_change(id)
+
+
+
+
 
                 time.sleep(0.1)
 

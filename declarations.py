@@ -15,8 +15,11 @@ USE_WEBSOCKET = False
 LOG_SERIAL_PORT = False #True
 LOG_REST = True
 SIGNAL_QUALITY_THRESHOLD = 2
+REQUESTS_TIMEOUT = 3
 
 WEBSOCK_PATH = "/livephone/"
+
+RETRY_REST_DELAY = 1 * 60 #5 * 60
 
 
 # SERVER
@@ -24,7 +27,7 @@ PHONE_UPDATE = "/api/phone_update"
 PHONES = "/api/phones"
 PHONE_CREATE = "/api/phone_create"
 PHONES_SAMPLE_REQ =    {
-        "operator": "vodane",
+        "operator": "vodafone",
         "signal_q": 12,
         "reg_status": "Denied",
         "cipher_ind": True,
