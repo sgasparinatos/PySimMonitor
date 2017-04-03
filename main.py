@@ -7,9 +7,12 @@ from queue import Queue, Empty
 import requests
 from declarations import *
 from modem import ModemControlThread
-from websock import WebSocketThread
+# from websock import WebSocketThread
 from dboperations import *
-# import eventlet
+from luma.core.serial import i2c, spi
+from luma.core.render import canvas
+from luma.oled.device import ssd1306, ssd1325, ssd1331, sh1106
+import subprocess
 
 class MainProg:
     changes_queue = Queue()
@@ -27,6 +30,42 @@ class MainProg:
         self.dbo = DbOperations(settings['Db'])
         self.rest_fail_time = 0
         self.rest_success_time = 0
+        self.oled = ssd1306(i2c(port=1, address=0x3C))
+        self.oled_status = 0
+        self.status_time = 0
+        # self.draw = canvas(self.oled)
+
+        with canvas(self.oled) as draw:
+            draw.text((10,10), "PySimMonitor", fill="white")
+            draw.text((10,20), "Starting...", fill="white")
+
+        self.essid = ""
+        self.operator = ""
+        self.csq = 0
+
+
+    def update_oled(self):
+        with canvas(self.oled) as draw:
+            draw.rectangle(self.oled.bounding_box, outline="white", fill="black")
+            draw.text((10,10), "Wifi: " + self.essid, fill="white")
+            draw.text((10,20), "Oper: " + self.operator, fill="white")
+            draw.text((10,30), "CSQ : " + str(self.csq), fill="white")
+            if self.oled_status % 4 == 0:
+                draw.text((10,40), ".", fill="white")
+            elif self.oled_status % 4 == 1:
+                draw.text((10,40), "..", fill="white")
+            elif self.oled_status % 4 == 2:
+                draw.text((10,40), "...", fill="white")
+            elif self.oled_status % 4 == 3:
+                draw.text((10,40), "", fill="white")
+
+            if time.time() - self.status_time > STATUS_CHANGE_INTERVAL:
+                proc = subprocess.Popen(['./scripts/essid.sh'], stdout=subprocess.PIPE)
+                self.essid = str(proc.stdout.read()).strip().replace("n","").replace("\"","").replace("'","").replace("b","").replace("\\","")
+                self.status_time = time.time()
+                self.oled_status += 1
+                if self.oled_status == 4:
+                    self.oled_status = 0
 
 
     def send_changes(self, changes):
@@ -81,6 +120,7 @@ class MainProg:
             self.modem_thread.start()
 
             while self.work:
+                self.update_oled()
                 try:
                     changes = self.changes_queue.get(0)
 
@@ -94,7 +134,14 @@ class MainProg:
                             self.websock_thread.setName("WS")
                             self.websock_thread.start()
 
+
                     elif USE_REST:
+                        if "signal_q" in changes:
+                            self.csq = int(changes['signal_q'])
+                        elif "operator" in changes:
+                            self.operator = changes['operator']
+
+
                         if not self.send_changes(changes):
                             self.store_changes(changes)
 

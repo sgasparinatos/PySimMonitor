@@ -11,6 +11,7 @@ REGISTER_DICT = {0: "not registered",
                  5: "registered with roaming"}
 
 USE_WEBSOCKET = False
+STATUS_CHANGE_INTERVAL = 1
 
 LOG_SERIAL_PORT = False #True
 LOG_REST = True
