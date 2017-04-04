@@ -7,7 +7,7 @@ from queue import Queue, Empty
 import requests
 from declarations import *
 from modem import ModemControlThread
-# from websock import WebSocketThread
+from websock import WebSocketThread
 from dboperations import *
 from luma.core.serial import i2c, spi
 from luma.core.render import canvas
@@ -43,25 +43,30 @@ class MainProg:
         self.operator = ""
         self.csq = 0
 
+        self.modem_status_string = "-"
+
 
     def update_oled(self):
         with canvas(self.oled) as draw:
-            draw.rectangle(self.oled.bounding_box, outline="white", fill="black")
-            draw.text((10,10), "Wifi: " + self.essid, fill="white")
-            draw.text((10,20), "Oper: " + self.operator, fill="white")
-            draw.text((10,30), "CSQ : " + str(self.csq), fill="white")
+            # draw.rectangle(self.oled.bounding_box, outline="white", fill="black")
+            draw.text((5,5), "Wifi : " + self.essid, fill="white")
+            draw.text((5,15), "Oper : " + self.operator, fill="white")
+            draw.text((5,25), "CSQ : " + str(self.csq), fill="white")
+            draw.text((5,35), "Modem : " + self.modem_status_string, fill="white")
             if self.oled_status % 4 == 0:
-                draw.text((10,40), ".", fill="white")
+                draw.text((5,45), ".", fill="white")
             elif self.oled_status % 4 == 1:
-                draw.text((10,40), "..", fill="white")
+                draw.text((5,45), "..", fill="white")
             elif self.oled_status % 4 == 2:
-                draw.text((10,40), "...", fill="white")
+                draw.text((5,45), "...", fill="white")
             elif self.oled_status % 4 == 3:
-                draw.text((10,40), "", fill="white")
+                draw.text((5,45), "", fill="white")
+
 
             if time.time() - self.status_time > STATUS_CHANGE_INTERVAL:
                 proc = subprocess.Popen(['./scripts/essid.sh'], stdout=subprocess.PIPE)
-                self.essid = str(proc.stdout.read()).strip().replace("n","").replace("\"","").replace("'","").replace("b","").replace("\\","")
+                tmp1 = proc.stdout.read().decode('utf-8')
+                self.essid = tmp1.replace("\n","").replace("'","").replace("\\","").strip()
                 self.status_time = time.time()
                 self.oled_status += 1
                 if self.oled_status == 4:
@@ -136,11 +141,15 @@ class MainProg:
 
 
                     elif USE_REST:
+
+                        self.modem_status_string = "OK"
                         if "signal_q" in changes:
                             self.csq = int(changes['signal_q'])
                         elif "operator" in changes:
                             self.operator = changes['operator']
 
+                        elif "error" in changes:
+                            self.modem_status_string = "X"
 
                         if not self.send_changes(changes):
                             self.store_changes(changes)
@@ -148,14 +157,12 @@ class MainProg:
                 except Empty:
                     pass
 
-                if  time.time() - self.rest_success_time > RETRY_REST_DELAY:
+                if  time.time() - self.rest_fail_time > RETRY_REST_DELAY or self.rest_success_time > self.rest_fail_time:
                     count = self.dbo.has_changes()
                     for i in range(count):
                         id, change = self.dbo.get_older_change_rest()
                         if self.send_changes(change):
                             self.dbo.delete_change(id)
-
-
 
 
 

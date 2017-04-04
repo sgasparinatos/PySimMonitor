@@ -115,6 +115,7 @@ class ModemControlThread(Thread):
 
                 else:
                     logging.warning("MODEM NOT RESPONDING")
+                    self.changes_queue.put({"error" : "NOT RESPONDING", "timestamp" : str(datetime.datetime.now())})
 
                 # TODO if modem is not responding for sometime
                 continue
