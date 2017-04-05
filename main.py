@@ -186,6 +186,9 @@ class MainProg:
         logging.info("CTRL+C , exitting...")
         self.work = False
         self.modem_thread.stop()
+        if USE_WEBSOCKET:
+            self.websock_thread.stop()
+
 
 
 def enable_logging():
