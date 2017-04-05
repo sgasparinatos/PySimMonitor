@@ -44,6 +44,7 @@ class WebSocketThread(Thread):
                     self.ws.send(res)
 
                 except Empty:
+                    self.ws.send("NO RESPSONSE")
                     continue
 
                 except WebSocketTimeoutException:
