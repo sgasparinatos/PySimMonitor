@@ -382,7 +382,7 @@ class ModemControlThread(Thread):
                 changes['firmware_version'] = firmware_version[:10]
 
             if len(data)!=0 and self.ws_cmd_received:
-                self.ws_res_queue(data + "\n" + self.ws_res)
+                self.ws_res_queue.put(data + "\n" + self.ws_res)
                 self.ws_cmd_received = False
 
             if len(changes) > 0:

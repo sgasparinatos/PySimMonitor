@@ -1,8 +1,8 @@
 from threading import Thread
 from declarations import *
-from websocket import create_connection
+from websocket import create_connection, WebSocketTimeoutException
 import logging
-from queue import Queue
+from queue import Queue, Empty
 import time
 from declarations import *
 
@@ -26,6 +26,7 @@ class WebSocketThread(Thread):
         while self.work:
             try:
                 self.ws = create_connection(self.websock_url)
+                self.ws.settimeout(1)
                 if LOG_WEBSOCKET:
                     logging.info("Connected to " + self.websock_url)
             except Exception:
@@ -38,12 +39,19 @@ class WebSocketThread(Thread):
                     command = self.ws.recv()
                     logging.info("GOT command \"" + command + "\"" )
                     self.queue_cmd.put(command)
-                    res = self.queue_res.get()
+                    res = self.queue_res.get(3)
                     logging.info("SENDING response \"" + res +"\"")
                     self.ws.send(res)
 
+                except Empty:
+                    continue
+
+                except WebSocketTimeoutException:
+                    continue
+
                 except Exception:
                     logging.warning("Error receiving data ... disconnect.")
+                    self.ws.close()
                     break
 
 
@@ -52,11 +60,15 @@ class WebSocketThread(Thread):
 
 if __name__ == '__main__':
 
-    q = Queue()
-    wst = WebSocketThread("ws://10.9.0.3:8000", q, "204043255462105")
+
+    logging.basicConfig(format='%(threadName)s %(levelname)s: %(message)s', level=logging.INFO)
+    qr = Queue()
+    qc = Queue()
+    wst = WebSocketThread("ws://10.9.0.3:8000", qc, qr, "204043255462105")
     wst.start()
     while True:
-        c=q.get()
+        c=qc.get()
+        qr.put("test")
         print(c)
 
     wst.join()
