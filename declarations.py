@@ -10,11 +10,12 @@ REGISTER_DICT = {0: "not registered",
                  4: "unknown",
                  5: "registered with roaming"}
 
-USE_WEBSOCKET = False
+USE_WEBSOCKET = True
 STATUS_CHANGE_INTERVAL = 1
 
 LOG_SERIAL_PORT = False #True
-LOG_REST = True
+LOG_WEBSOCKET = False
+LOG_REST = True# False
 SIGNAL_QUALITY_THRESHOLD = 2
 REQUESTS_TIMEOUT = 2
 

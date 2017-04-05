@@ -16,11 +16,12 @@ import subprocess
 
 class MainProg:
     changes_queue = Queue()
-    websock_queue = Queue()
+    ws_cmd_queue = Queue()
+    ws_res_queue = Queue()
     work = True
 
     def __init__(self, settings):
-        self.modem_thread = ModemControlThread(settings['Modem'], self.changes_queue, self.websock_queue)
+        self.modem_thread = ModemControlThread(settings['Modem'], self.changes_queue, self.ws_cmd_queue, self.ws_res_queue)
         self.modem_thread.setName("MC")
 
         self.url = "http://" + settings['Server']['url']
@@ -83,6 +84,7 @@ class MainProg:
             req = requests.patch(self.url + PHONE_UPDATE, json=changes, headers=HEADERS, timeout=REQUESTS_TIMEOUT)
             if req.status_code != 200:
                 logging.warning("Request FAILED with " + str(req.status_code))
+                logging.warning(req.json())
                 self.rest_fail_time = time.time()
                 return False
             else:
@@ -135,7 +137,7 @@ class MainProg:
                         self.send_full_phone()
 
                         if USE_WEBSOCKET:
-                            self.websock_thread = WebSocketThread(self.ws_url, self.websock_queue, self.imsi)
+                            self.websock_thread = WebSocketThread(self.ws_url, self.ws_cmd_queue, self.ws_res_queue, self.imsi)
                             self.websock_thread.setName("WS")
                             self.websock_thread.start()
 

@@ -39,8 +39,10 @@ class ModemControlThread(Thread):
     values = ModemValues()
     crsm_address = 0
     last_command = ""
+    ws_cmd_received = False
+    ws_res = ""
 
-    def __init__(self, modem_settings, changes_queue, websock_queue):
+    def __init__(self, modem_settings, changes_queue, ws_cmd_qeueu, ws_res_queue):
         Thread.__init__(self)
         try:
             self.ser = Serial(port=modem_settings['serialport'],
@@ -54,7 +56,8 @@ class ModemControlThread(Thread):
                               dsrdtr=False)
 
             self.changes_queue = changes_queue
-            self.websock_queue = websock_queue
+            self.ws_cmd_queue = ws_cmd_qeueu
+            self.ws_res_queue = ws_res_queue
             self.work = True
         except SerialException as err:
             logging.critical("Problem opening serial port, {0}".format(err))
@@ -162,9 +165,13 @@ class ModemControlThread(Thread):
                 t2 = time.time()
                 if wait_response in res:
                     status = True
+                    self.ws_res = wait_response
                     break
                 if "ERROR" in res:
                     status = False
+                    if self.ws_cmd_received:
+                        self.ws_res_queue.put("ERROR")
+
                     break
                 if t2 - t1 > wait_time:
                     status = None
@@ -184,7 +191,9 @@ class ModemControlThread(Thread):
         # TODO something if needs pin
         time.sleep(0.1)
         self.command("AT#CCID", "OK", 1, True, True)
+        self.command("AT+COPS=0,2", "OK", 1, True, True)
         self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423)  # IMSI
+
 
 
 
@@ -222,7 +231,7 @@ class ModemControlThread(Thread):
         self.command("AT+CSQ", "OK", 1, True, True)  # signal quality
         self.command("AT+COPS?", "OK", 1, True, True)  # operator
         self.command("AT+CREG?", "OK", 1, True, True)  # registration status
-        self.command("AT+CLIP=1", "OK", 1, True, True)  # caller line identity
+        #self.command("AT+CLIP=1", "OK", 1, True, True)  # caller line identity
 
     @staticmethod
     def reverse_chars(str_in):
@@ -359,18 +368,22 @@ class ModemControlThread(Thread):
             elif "Model" in data:
                 phone_model = data.split(":")[1].strip()
                 print("Model:" + phone_model)
-                changes['phone_model'] = phone_model
+                changes['phone_model'] = phone_model[:10]
 
             elif "IMEI" in data:
                 imei = data.split(":")[1].strip()
                 print("IMEI:" + imei)
                 changes['imei'] = imei
 
-            #TODO bigger field in firmware django
-            # elif "Revision" in data:
-            #     firmware_version = data.split(":")[1].strip()
-            #     print("firmware:" + firmware_version)
-            #     changes['firmware_version'] = firmware_version
+
+            elif "Revision" in data:
+                firmware_version = data.split(":")[1].strip()
+                print("firmware:" + firmware_version)
+                changes['firmware_version'] = firmware_version[:10]
+
+            if len(data)!=0 and self.ws_cmd_received:
+                self.ws_res_queue(data + "\n" + self.ws_res)
+                self.ws_cmd_received = False
 
             if len(changes) > 0:
                 changes['timestamp'] = str(datetime.datetime.now())
@@ -391,6 +404,16 @@ class ModemControlThread(Thread):
             self.status_commands()
             time.sleep(1)
             self.security_commands()
+            try:
+                ws_cmd = self.ws_cmd_queue.get(0)
+                self.command(ws_cmd, "OK", 1, True, True)
+                #self.command("AT+CRSM=176,28589,0,0,3", "OK", 1, True, True, crsm_addr=28589)  # CIPHER INDICATOR
+
+                self.ws_cmd_received = True
+            except Empty:
+                self.ws_cmd_received = False
+                pass
             time.sleep(CHECK_STATUS_INTERVAL)
+
 
         logging.info("Stopped")
