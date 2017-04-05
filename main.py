@@ -31,14 +31,18 @@ class MainProg:
         self.dbo = DbOperations(settings['Db'])
         self.rest_fail_time = 0
         self.rest_success_time = 0
-        self.oled = ssd1306(i2c(port=1, address=0x3C))
-        self.oled_status = 0
-        self.status_time = 0
-        # self.draw = canvas(self.oled)
 
-        with canvas(self.oled) as draw:
-            draw.text((10,10), "PySimMonitor", fill="white")
-            draw.text((10,20), "Starting...", fill="white")
+        self.use_oled = False
+        if int(settings['Main']['oled'])==1:
+            self.oled = ssd1306(i2c(port=1, address=0x3C))
+            self.oled_status = 0
+            self.status_time = 0
+            self.use_oled = True
+
+        # self.draw = canvas(self.oled)
+            with canvas(self.oled) as draw:
+                draw.text((10,10), "PySimMonitor", fill="white")
+                draw.text((10,20), "Starting...", fill="white")
 
         self.essid = ""
         self.operator = ""
@@ -127,7 +131,8 @@ class MainProg:
             self.modem_thread.start()
 
             while self.work:
-                self.update_oled()
+                if self.use_oled:
+                    self.update_oled()
                 try:
                     changes = self.changes_queue.get(0)
 
