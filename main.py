@@ -164,7 +164,7 @@ class MainProg:
                 except Empty:
                     pass
 
-                if  time.time() - self.rest_fail_time > RETRY_REST_DELAY or self.rest_success_time > self.rest_fail_time:
+                if  (time.time() - self.rest_fail_time > RETRY_REST_DELAY or self.rest_success_time > self.rest_fail_time) and self.imsi!="imsi1":
                     count = self.dbo.has_changes()
                     for i in range(count):
                         id, change = self.dbo.get_older_change_rest()
