@@ -191,7 +191,7 @@ class ModemControlThread(Thread):
         # TODO something if needs pin
         time.sleep(0.1)
         self.command("AT#CCID", "OK", 1, True, True)
-        self.command("AT+COPS=0,2", "OK", 1, True, True)
+        self.command("AT+COPS=0,1", "OK", 1, True, True)
         self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423)  # IMSI
 
 
@@ -262,10 +262,10 @@ class ModemControlThread(Thread):
                 pass
 
             elif "+COPS" in data:  # operator
-                operator = int(data.replace("+COPS:", "").split(",")[2].replace("\"", ""))
+                operator = data.replace("+COPS:", "").split(",")[2].replace("\"", "")
                 if self.values.operator != operator:
                     self.values.operator = operator
-                    changes['operator'] = OPERATOR_DICT[operator]
+                    changes['operator'] = operator
 
             elif "+CRSM" in data:  # restricted sim data
                 # value = self.reverse_chars(data.replace("+CRSM:", "").split(",")[2].replace("\"", ""))
