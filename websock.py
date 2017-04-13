@@ -15,11 +15,15 @@ class WebSocketThread(Thread):
         self.queue_cmd = queue_cmd
         self.queue_res = queue_res
         self.work = True
+        self.status = False
 
 
 
     def stop(self):
         self.work = False
+
+    def get_status(self):
+        return self.status
 
     def run(self):
 
@@ -27,11 +31,14 @@ class WebSocketThread(Thread):
             try:
                 self.ws = create_connection(self.websock_url)
                 self.ws.settimeout(1)
+                self.status = True
                 if LOG_WEBSOCKET:
                     logging.info("Connected to " + self.websock_url)
+
             except Exception:
                 logging.warning("Failed to connect to websocket")
                 time.sleep(1)
+                self.status = False
                 continue
 
             while self.work:
@@ -39,12 +46,12 @@ class WebSocketThread(Thread):
                     command = self.ws.recv()
                     logging.info("GOT command \"" + command + "\"" )
                     self.queue_cmd.put(command)
-                    res = self.queue_res.get(3)
+                    res = self.queue_res.get(300)
                     logging.info("SENDING response \"" + res +"\"")
                     self.ws.send(res)
 
                 except Empty:
-                    self.ws.send("NO RESPSONSE")
+                    self.ws.send("NO RESPONSE")
                     continue
 
                 except WebSocketTimeoutException:
@@ -52,6 +59,7 @@ class WebSocketThread(Thread):
 
                 except Exception:
                     logging.warning("Error receiving data ... disconnect.")
+                    self.status = False
                     self.ws.close()
                     break
 

@@ -1,10 +1,14 @@
-from sqlalchemy import Column, ForeignKey, Integer, String
+from xmlrpc.client import Boolean
+
+from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 import logging
+from datetime import datetime
 
 Base = declarative_base()
+settings = {'db_url': 'sqlite:///changes.db'}
 
 class DataChange(Base):
 
@@ -16,6 +20,34 @@ class DataChange(Base):
     timestamp = Column(String(250), nullable=False)
 
 
+class CurrentValues(Base):
+
+    __tablename__ = 'currentvalues'
+
+    id = Column(Integer, primary_key=True)
+    operator = Column(String)
+    signal_q  = Column(Integer)
+    reg_status = Column(Boolean)
+    cipher_ind = Column(Boolean)
+    kc = Column(String)
+    kc_gprs = Column(String)
+    cipher_key = Column(String)
+    integrity_key = Column(String)
+    tmsi = Column(String)
+    tmsi_time = Column(Integer)
+    lai = Column(String)
+    ptmsi = Column(String)
+    ptmsi_sign = Column(String)
+    rai = Column(String)
+    threshold = Column(Integer)
+    phone_vendor = Column(String)
+    phone_model = Column(String)
+    firmware_version = Column(String)
+    imei = Column(String)
+    error = Column(String)
+    timestamp = Column(DateTime)
+
+
 class DbOperations():
 
     def __init__(self, settings):
@@ -24,6 +56,13 @@ class DbOperations():
 
         self.dbsession = sessionmaker(bind=self.engine)
         self.session = self.dbsession()
+        self.init_currentvalues()
+
+    def init_currentvalues(self):
+        if self.session.query(CurrentValues).count() == 0:
+            cur_values = CurrentValues(id=1)
+            self.session.add(cur_values)
+            self.session.commit()
 
 
     def new_change(self, name, value, timestamp):
@@ -56,6 +95,21 @@ class DbOperations():
     def has_changes(self):
         return self.session.query(DataChange).count()
 
+    def get_current_values(self):
+        return self.session.query(CurrentValues)
+
+    def different_value(self, field, value):
+        current_values = self.session.query(CurrentValues).one()
+        if getattr(current_values, field) != value:
+            return True
+        else:
+            return False
+
+
+    def update_current_value(self, field, value):
+        self.session.query(CurrentValues).update({field: value, CurrentValues.timestamp: datetime.now()})
+        self.session.commit()
+
 
 def create_db(settings):
     engine = create_engine(settings['db_url'])
@@ -84,9 +138,8 @@ def get_and_del_test(settings):
 
 if __name__ == '__main__':
 
-    settings = {'db_url': 'sqlite:///changes.db'}
 
-    # create_db(settings)
+    create_db(settings)
     #
     # insert_test(settings)
 

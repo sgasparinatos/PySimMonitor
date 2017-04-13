@@ -7,7 +7,7 @@ from queue import Queue, Empty
 import struct
 import binascii
 import datetime
-
+import RPi.GPIO as gpio
 
 class ModemValues:
     imsi = None
@@ -41,12 +41,29 @@ class ModemControlThread(Thread):
     last_command = ""
     ws_cmd_received = False
     ws_res = ""
+    reset_modem_flag = False
+
 
     def __init__(self, modem_settings, changes_queue, ws_cmd_qeueu, ws_res_queue):
         Thread.__init__(self)
+
+        self.modem_settings = modem_settings
+        self.changes_queue = changes_queue
+        self.ws_cmd_queue = ws_cmd_qeueu
+        self.ws_res_queue = ws_res_queue
+        self.work = True
+        self.sim_pin = modem_settings['sim_pin']
+
+        gpio.setmode(gpio.BOARD)
+        gpio.setup(RESET_BUTTON_GPIO, gpio.IN, gpio.PUD_UP)
+        gpio.add_event_detect(RESET_BUTTON_GPIO, gpio.FALLING, callback=self.reset_button_callback)
+
+
+
+    def create_serial(self):
         try:
-            self.ser = Serial(port=modem_settings['serialport'],
-                              baudrate=modem_settings['baudrate'],
+            self.ser = Serial(port=self.modem_settings['serialport'],
+                              baudrate=self.modem_settings['baudrate'],
                               bytesize=EIGHTBITS,
                               parity=PARITY_NONE,
                               timeout=0.1,
@@ -55,13 +72,11 @@ class ModemControlThread(Thread):
                               stopbits=1,
                               dsrdtr=False)
 
-            self.changes_queue = changes_queue
-            self.ws_cmd_queue = ws_cmd_qeueu
-            self.ws_res_queue = ws_res_queue
-            self.work = True
+
         except SerialException as err:
             logging.critical("Problem opening serial port, {0}".format(err))
             self.work = False
+
 
     def ready(self):
         return self.work
@@ -125,6 +140,7 @@ class ModemControlThread(Thread):
 
             elif not status:
                 # TODO if i get too many errors from the modem
+                self.ws_cmd_received = False
                 continue
 
             elif status:
@@ -187,14 +203,28 @@ class ModemControlThread(Thread):
         time.sleep(0.1)
         self.command("ATE0", "OK", 1, True, True)
         time.sleep(0.1)
-        self.command("AT+CPIN?", "OK", 1, True, True)
-        # TODO something if needs pin
-        time.sleep(0.1)
+
+        status, res = self.command("AT+CPIN?", "OK", 1, True, True)
+        if not ("READY" in res):
+            status, res = self.command("AT+CPIN=\"" + self.sim_pin +"\"", "OK", 1, True, True)
+            time.sleep(1)
+            status, res = self.command("AT+CPIN?", "OK", 1, True, True)
+            logging.error("ERROR with pin... exiting")
+            if not ("READY" in res):
+                return False
+
+        time.sleep(2)
         self.command("AT#CCID", "OK", 1, True, True)
         self.command("AT+COPS=0,1", "OK", 1, True, True)
         self.command("AT+CRSM=176,28423,0,0,9", "OK", 1, True, True, crsm_addr=28423)  # IMSI
+        return True
 
-
+    def reset_modem(self):
+        self.command("AT+CFUN=4", "OK", 1, True, True)
+        time.sleep(3)
+        self.command("AT+CFUN=1,1", "OK", 1, True, True)
+        self.ser.close()
+        time.sleep(20)
 
 
     def me_commands(self):
@@ -352,8 +382,6 @@ class ModemControlThread(Thread):
                     self.values.signal_quality = signal_quality
                     changes["signal_q"] = signal_quality
 
-            elif "+CPIN" in data:  # pin status
-                pass
 
             elif "+CMEE" in data:  # ERRORS
                 cmee_code = int(data.replace("+CMEE", "").replace("ERROR").replace(":").strip())
@@ -394,26 +422,42 @@ class ModemControlThread(Thread):
             logging.error("On command : " + self.last_command)
 
 
+    def reset_button_callback(self, channel):
+        self.reset_modem_flag = True
+        logging.info("Reset pressed")
+
+
     def run(self):
 
-        self.init_modem()
-        self.me_commands()
-        self.read_unsolicited()
-
         while self.work:
-            self.status_commands()
-            time.sleep(1)
-            self.security_commands()
-            try:
-                ws_cmd = self.ws_cmd_queue.get(0)
-                self.command(ws_cmd, "OK", 1, True, True)
-                #self.command("AT+CRSM=176,28589,0,0,3", "OK", 1, True, True, crsm_addr=28589)  # CIPHER INDICATOR
 
-                self.ws_cmd_received = True
-            except Empty:
-                self.ws_cmd_received = False
-                pass
-            time.sleep(CHECK_STATUS_INTERVAL)
+            if not self.init_modem():
+                self.work = False
+
+            self.me_commands()
+            self.read_unsolicited()
+
+            while self.work:
+                self.status_commands()
+                #time.sleep(0.1)
+                self.security_commands()
+                try:
+                    ws_cmd = self.ws_cmd_queue.get(0)
+                    self.ws_cmd_received = True
+                    self.command(ws_cmd, "OK", 120, True, True)
+                    #self.command("AT+CRSM=176,28589,0,0,3", "OK", 1, True, True, crsm_addr=28589)  # CIPHER INDICATOR
+
+                except Empty:
+                    self.ws_cmd_received = False
+                    pass
+
+                if self.reset_modem_flag:
+                    self.reset_modem()
+                    self.changes_queue.put({"error" : "RESET MODEM", "timestamp" : str(datetime.datetime.now())})
+                    self.create_serial()
+                    self.reset_modem_flag = False
+                    break
+                time.sleep(CHECK_STATUS_INTERVAL)
 
 
         logging.info("Stopped")

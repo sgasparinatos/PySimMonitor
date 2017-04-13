@@ -22,7 +22,10 @@ class MainProg:
 
     def __init__(self, settings):
         self.modem_thread = ModemControlThread(settings['Modem'], self.changes_queue, self.ws_cmd_queue, self.ws_res_queue)
+        self.modem_thread.create_serial()
         self.modem_thread.setName("MC")
+
+        self.websock_thread = None
 
         self.url = "http://" + settings['Server']['url']
         self.ws_url = "ws://" + settings['Server']['url']
@@ -31,8 +34,8 @@ class MainProg:
         self.dbo = DbOperations(settings['Db'])
         self.rest_fail_time = 0
         self.rest_success_time = 0
+        self.rest_last_action_success = False
 
-        self.use_oled = False
         if int(settings['Main']['oled'])==1:
             self.oled = ssd1306(i2c(port=1, address=0x3C))
             self.oled_status = 0
@@ -54,18 +57,26 @@ class MainProg:
     def update_oled(self):
         with canvas(self.oled) as draw:
             # draw.rectangle(self.oled.bounding_box, outline="white", fill="black")
-            draw.text((5,5), "Wifi : " + self.essid, fill="white")
-            draw.text((5,15), "Oper : " + self.operator, fill="white")
-            draw.text((5,25), "CSQ : " + str(self.csq), fill="white")
-            draw.text((5,35), "Modem : " + self.modem_status_string, fill="white")
+            draw.text((5,5), "Wifi: " + self.essid, fill="white")
+            draw.text((5,15), "Oper: " + self.operator, fill="white")
+            draw.text((5,25), "CSQ: " + str(self.csq), fill="white")
+            draw.text((5,35), "Modem: " + self.modem_status_string , fill="white")
+            draw.text((5,45), "Srv: " + ("OK" if self.rest_last_action_success else "X"), fill="white")
+            if self.websock_thread is not None:
+                draw.text((50,45), "  WS: " + ( "OK" if self.websock_thread.get_status() else "X"), fill="white")
+
             if self.oled_status % 4 == 0:
-                draw.text((5,45), ".", fill="white")
+                # draw.text((110,45), ".", fill="white")
+                draw.text((110,45), "-", fill="white")
             elif self.oled_status % 4 == 1:
-                draw.text((5,45), "..", fill="white")
+                # draw.text((110,45), "..", fill="white")
+                draw.text((110,45), "\\", fill="white")
             elif self.oled_status % 4 == 2:
-                draw.text((5,45), "...", fill="white")
+                # draw.text((110,45), "...", fill="white")
+                draw.text((110,45), "|", fill="white")
             elif self.oled_status % 4 == 3:
-                draw.text((5,45), "", fill="white")
+                # draw.text((110,45), "", fill="white")
+                draw.text((110,45), "/", fill="white")
 
 
             if time.time() - self.status_time > STATUS_CHANGE_INTERVAL:
@@ -91,9 +102,11 @@ class MainProg:
                 logging.warning(req.json())
                 self.rest_fail_time = time.time()
                 return False
+
             else:
                 self.rest_success_time = time.time()
                 return True
+
         except Exception:
             logging.warning("Failed to send changes to server")
             self.rest_fail_time = time.time()
@@ -158,8 +171,21 @@ class MainProg:
                         elif "error" in changes:
                             self.modem_status_string = "X"
 
-                        if not self.send_changes(changes):
-                            self.store_changes(changes)
+
+                        send_to_rest = False
+                        for key in changes.keys():
+                            if key == 'timestamp':
+                                continue
+                            if self.dbo.different_value(key,changes[key]):
+                                send_to_rest = True
+                                self.dbo.update_current_value(key, changes[key])
+
+                        if send_to_rest:
+                            if not self.send_changes(changes):
+                                self.rest_last_action_success = False
+                                self.store_changes(changes)
+                            else:
+                                self.rest_last_action_success = True
 
                 except Empty:
                     pass
